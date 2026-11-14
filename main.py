@@ -1,14 +1,14 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Query
+from fastapi.responses import JSONResponse
 import requests
 import os
 
-app = Flask(__name__)
+app = FastAPI()
 
 # 🔑 API key Render ke environment se aayegi
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # 🔄 FALLBACK CHAIN — high-quota pehle, keemti models baad mein!
-# 💎 Flash-Lite = 500 din | ⭐ Flash = 20 din | 🔥 Gemma = 14,400 din
 GEMINI_MODELS = [
     "gemini-3.5-flash-lite",   # 💎 500/din — MAIN workhorse
     "gemini-3.1-flash-lite",   # 💎 500/din — doosra tank
@@ -20,7 +20,7 @@ GEMINI_MODELS = [
 
 
 def google_se_pucho(question):
-    """Ek model busy/quota-khatam ho to agle pe jump — cycle chalti rahegi 🔄"""
+    """Ek model busy/quota-khatam ho to agle pe jump 🔄"""
     last_error = None
 
     for model in GEMINI_MODELS:
@@ -40,7 +40,7 @@ def google_se_pucho(question):
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
                 return text, model, None
 
-            last_error = data  # ❌ Busy/locked — agla model try karo
+            last_error = data  # ❌ Busy — agla model
             print(f"[Quasar] {model} fail hua, agla try kar raha hoon...")
 
         except requests.exceptions.RequestException as e:
@@ -50,33 +50,23 @@ def google_se_pucho(question):
     return None, None, last_error  # 😢 sab busy
 
 
-@app.route("/")
+@app.get("/")
 def home():
-    return jsonify({"status": "Quasar API zinda hai 🚀"})
+    return {"status": "Quasar API zinda hai 🚀"}
 
 
-@app.route("/ask")
-def ask():
-    q = request.args.get("q", "")
-
+@app.get("/ask")
+def ask(q: str = Query("")):
     if not q:
-        return jsonify({"error": "Question bhejo! ?q=... use karo"})
+        return JSONResponse({"error": "Question bhejo! ?q=... use karo"})
 
     jawab, model, err = google_se_pucho(q)
 
     if jawab:
-        return jsonify({
-            "question": q,
-            "answer": jawab,
-            "model": model,   # 🕵️ Kis dimaag ne jawab diya
-        })
+        return {"question": q, "answer": jawab, "model": model}
 
-    return jsonify({
+    return JSONResponse({
         "error": "'candidates'",
         "google_ka_jawab": str(err),
         "message": "Sab models busy hain 😅 Thodi der baad try karo!"
     })
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
