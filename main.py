@@ -40,7 +40,7 @@ def db_test():
 # ============ QUASAR KA DIMAAG (AI BRAIN) 🧠 ============
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-3.8-flash"     
 
 QUASAR_PERSONA = (
     "Tum 'Quasar' ho - ek smart aur friendly AI business assistant. "
