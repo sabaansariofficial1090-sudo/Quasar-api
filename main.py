@@ -1,64 +1,82 @@
-import os
+from flask import Flask, request, jsonify
 import requests
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import os
 
-app = FastAPI(title="Quasar API")
+app = Flask(__name__)
 
-# Homepage ko backend call karne ki permission
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Password code mein NAHI — Render ke Environment se aayega (safe!)
-DATABASE_URL = os.environ.get("DATABASE_URL")
-
-
-@app.get("/")
-def home():
-    return {"status": "Quasar API zinda hai 🚀"}
-
-
-@app.get("/db-test")
-def db_test():
-    """Neon database se connection test"""
-    try:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-        cur = conn.cursor()
-        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-        tables = sorted(r["table_name"] for r in cur.fetchall())
-        cur.close()
-        conn.close()
-        return {"connected": True, "tables": tables}
-    except Exception as e:
-        return {"connected": False, "error": str(e)}
-# ============ QUASAR KA DIMAAG (AI BRAIN) 🧠 ============
-
+# 🔑 API key Render ke environment se aayegi
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-3.8-flash"     
 
-QUASAR_PERSONA = (
-    "Tum 'Quasar' ho - ek smart aur friendly AI business assistant. "
-    "Har jawab simple, chhota aur clear do."
-)
+# 🔄 FALLBACK CHAIN — high-quota pehle, keemti models baad mein!
+# 💎 Flash-Lite = 500 din | ⭐ Flash = 20 din | 🔥 Gemma = 14,400 din
+GEMINI_MODELS = [
+    "gemini-3.5-flash-lite",   # 💎 500/din — MAIN workhorse
+    "gemini-3.1-flash-lite",   # 💎 500/din — doosra tank
+    "gemini-3.8-flash",        # ⭐ 20/din — best quality
+    "gemini-3.6-flash",        # ⭐ 20/din
+    "gemini-4-hydrogen",       # 🔥 20/din — naya Gemini 4
+    "gemma-4-26b",             # 🛟 14,400/din — LAST RESORT backup
+]
 
-@app.get("/ask")
-def ask(q: str):
-    if not GEMINI_API_KEY:
-        return {"error": "GEMINI_API_KEY missing - Render env vars check karo"}
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-        headers = {"x-goog-api-key": GEMINI_API_KEY}
-        prompt = QUASAR_PERSONA + "\n\nCustomer ka sawaal: " + q
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        r = requests.post(url, json=payload, headers=headers, timeout=30)
-        data = r.json()
-        answer = data["candidates"][0]["content"]["parts"][0]["text"]
-        return {"question": q, "answer": answer}
-    except Exception as e:
-                return {"error": str(e), "google_ka_jawab": str(locals().get("data", "n/a"))}
+
+def google_se_pucho(question):
+    """Ek model busy/quota-khatam ho to agle pe jump — cycle chalti rahegi 🔄"""
+    last_error = None
+
+    for model in GEMINI_MODELS:
+        try:
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": GEMINI_API_KEY,
+                },
+                json={"contents": [{"parts": [{"text": question}]}]},
+                timeout=20,
+            )
+            data = r.json()
+
+            if "candidates" in data:  # ✅ Jawab mil gaya!
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                return text, model, None
+
+            last_error = data  # ❌ Busy/locked — agla model try karo
+            print(f"[Quasar] {model} fail hua, agla try kar raha hoon...")
+
+        except requests.exceptions.RequestException as e:
+            last_error = {"error": str(e)}
+            print(f"[Quasar] {model} network fail, agla try...")
+
+    return None, None, last_error  # 😢 sab busy
+
+
+@app.route("/")
+def home():
+    return jsonify({"status": "Quasar API zinda hai 🚀"})
+
+
+@app.route("/ask")
+def ask():
+    q = request.args.get("q", "")
+
+    if not q:
+        return jsonify({"error": "Question bhejo! ?q=... use karo"})
+
+    jawab, model, err = google_se_pucho(q)
+
+    if jawab:
+        return jsonify({
+            "question": q,
+            "answer": jawab,
+            "model": model,   # 🕵️ Kis dimaag ne jawab diya
+        })
+
+    return jsonify({
+        "error": "'candidates'",
+        "google_ka_jawab": str(err),
+        "message": "Sab models busy hain 😅 Thodi der baad try karo!"
+    })
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
