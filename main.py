@@ -61,4 +61,4 @@ def ask(q: str):
         answer = data["candidates"][0]["content"]["parts"][0]["text"]
         return {"question": q, "answer": answer}
     except Exception as e:
-        return {"error": str(e)}
+                return {"error": str(e), "google_ka_jawab": str(locals().get("data", "n/a"))}
