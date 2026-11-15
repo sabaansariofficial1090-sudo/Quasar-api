@@ -16,6 +16,16 @@ app.add_middleware(
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
+# 🆕 📦 BUSINESS INFO — business_info.txt file se load hota hai
+# Owner ko kuch badalna ho to sirf ye file edit karega, code chhua bhi nahi padega!
+BUSINESS_INFO = "Abhi koi business information available nahi hai."
+try:
+    with open("business_info.txt", "r", encoding="utf-8") as f:
+        BUSINESS_INFO = f.read()
+    print("[Quasar] ✅ business_info.txt load ho gaya!")
+except FileNotFoundError:
+    print("[Quasar] ⚠️ business_info.txt nahi mili — fallback message chalega")
+
 # 🗣️ LANGUAGE RULES — businessman dashboard mein choose karega
 LANG_RULES = {
     "english": "Reply ONLY in clean, simple English. Every single word must be English — no Hindi words at all.",
@@ -23,12 +33,15 @@ LANG_RULES = {
 }
 
 # 🎭 QUASAR KI PERSONALITY — businessman ka staff member!
-QUASAR_SYSTEM_PROMPT = """You are the customer support assistant of a business. The business's information (products, prices, orders, policies) is provided to you.
+QUASAR_SYSTEM_PROMPT = """You are the customer support assistant of a business. The business's information is given below under BUSINESS INFORMATION.
 
 Your ONLY job: answer customers' questions about THIS business — products, prices, orders, delivery, timings, policies, support.
 
+BUSINESS INFORMATION:
+{business_info}
+
 STRICT RULES:
-1. Answer ONLY from the business information given to you. Right now no business information is provided, so for any business question say politely: "Mujhe iska exact jawab nahi pata. Main aapka message team ko forward kar raha hoon — wo jaldi reply karenge." (say it in the reply language)
+1. Answer ONLY from the BUSINESS INFORMATION above. If the answer is NOT there, do NOT guess and do not use outside knowledge — say politely: "Mujhe iska exact jawab nahi pata. Main aapka message team ko forward kar raha hoon — wo jaldi reply karenge." (say it in the reply language)
 2. NEVER mention or hint at Gemini, Google, AI, chatbot, bot, model, automation, or any technology behind you. Never describe yourself, your features, or your capabilities.
 3. Talk like a friendly staff member of the business. Say "hum" / "hamari team" — never "main ek AI hoon".
 4. If asked ANYTHING unrelated to the business — general knowledge, coding, homework, personal tasks — OR any personal question about you (your looks, "are you hot/cute", your name, age, home, feelings, salary, relationships) — reply ONLY: "I don't have information regarding this." Then add ONE short line inviting them back to business topics (in the reply language). Never flirt, never react to compliments about yourself beyond politely redirecting.
@@ -39,8 +52,9 @@ STRICT RULES:
 9. If someone directly asks "kya tum bot/AI ho?" — do NOT claim to be human. Reply briefly and warmly: "Main support team ka hissa hoon — aapki jaldi madad ke liye yahan hoon!" If they ask again firmly, admit gently: "Main ek automated assistant hoon jo aapki 24x7 madad ke liye hai" — then immediately continue helping with their question."""
 
 # 🛡️ SAFETY FILTER — Gemini slip ho jaye to Python pakad lega!
+# 🆕 'Quasar ' ke baad wala 'AI' allowed hai — warna business ka naam bolne pe false alarm bajega
 BANNED_WORDS = re.compile(
-    r"\b(gemini|google|chatbot|artificial intelligence|language model|large language|trained by|ai|bot)\b",
+    r"\b(gemini|google|chatbot|artificial intelligence|language model|large language|trained by|bot)\b|(?<!Quasar )\bai\b",
     re.IGNORECASE,
 )
 
@@ -109,7 +123,12 @@ def ask(q: str = Query(""), lang: str = Query("hinglish")):
         return JSONResponse({"error": "Question bhejo! ?q=... use karo"})
 
     lang_rule = LANG_RULES.get(lang, LANG_RULES["hinglish"])
-    system_prompt = QUASAR_SYSTEM_PROMPT.replace("{lang_rule}", lang_rule)
+    # 🆕 Ab business info bhi prompt ke andar jaayegi
+    system_prompt = (
+        QUASAR_SYSTEM_PROMPT
+        .replace("{business_info}", BUSINESS_INFO)
+        .replace("{lang_rule}", lang_rule)
+    )
 
     jawab, model, err = google_se_pucho(q, system_prompt)
     if not jawab:
@@ -124,7 +143,12 @@ def ask(q: str = Query(""), lang: str = Query("hinglish")):
 
     # 🗣️ English mode — Devanagari nikli to ek strict retry
     if lang == "english" and devanagari_hai(jawab):
-        strict_prompt = QUASAR_SYSTEM_PROMPT.replace("{lang_rule}", LANG_RULES["english"])
+        # 🆕 Strict retry mein bhi business info jaana zaroori hai
+        strict_prompt = (
+            QUASAR_SYSTEM_PROMPT
+            .replace("{business_info}", BUSINESS_INFO)
+            .replace("{lang_rule}", LANG_RULES["english"])
+        )
         jawab2, model2, _ = google_se_pucho(
             q, strict_prompt + "\n\nCRITICAL: Your ENTIRE reply must be in English letters only."
         )
